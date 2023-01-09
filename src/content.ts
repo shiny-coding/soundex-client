@@ -1,7 +1,7 @@
 import md5 from "md5";
 import $ from "jquery";
 import Account from "./model";
-import { localStorageUsernameId, localStoragePasswordHashId } from "./shared";
+import { localStorageUsernameId, localStoragePasswordHashId, localStorageHiddenTracksId } from "./shared";
 
 const soundexServerHost = 'https://soundex.herokuapp.com';
 
@@ -25,22 +25,26 @@ function calculatePasswordHash( password:string ) : string {
 	return md5( password );
 }
 
-async function loginOrRegisterLocal( account : Account ) : Promise<Account> {
-	let tracksJson = localStorage.getItem( 'hidden-tracks' );
+function loginOrRegisterLocal( account : Account ) {
+	let tracksJson = localStorage.getItem( localStorageHiddenTracksId );
 	let tracks = JSON.parse( tracksJson ?? '[]' );
-	return { ...account, tracks };
+	return {
+		result : true,
+		account : { ...account, tracks }
+	};
 }
 
-async function updateLocal( account : Account ) {
-	localStorage.setItem( 'hidden-tracks', JSON.stringify( account.tracks ) );
-	detailedLogging && console.log( localStorage.getItem( 'hidden-tracks' ) );
+function updateLocal( account : Account ) {
+	localStorage.setItem( localStorageHiddenTracksId, JSON.stringify( account.tracks ) );
+	detailedLogging && console.log( localStorage.getItem( localStorageHiddenTracksId ) );
+	return true;
 }
 
 async function loginOrRegisterImpl( account : Account ) : Promise<any> {
 	if ( useLocalStorage ) {
 		return loginOrRegisterLocal( account );
 	} else {
-		return requestSoundex( 'login_or_register', account );
+		return requestSoundexServer( 'login_or_register', account );
 	}
 }
 
@@ -48,27 +52,18 @@ async function update( account : Account ) : Promise<any> {
 	if ( useLocalStorage ) {
 		return updateLocal( account );
 	} else {
-		return requestSoundex( 'update', account );
+		return requestSoundexServer( 'update', account );
 	}
 }
 
-async function requestSoundex( action : string, account : Account ) : Promise<any> {
-	const data = new URLSearchParams();
-	data.set( 'username', account.username );
-	data.set( 'passwordHash', account.passwordHash );
-	data.set( 'tracks', JSON.stringify( account.tracks ) );
+async function requestSoundexServer( action : string, account : Account ) : Promise<any> {
 
 	let url = `${soundexServerHost}/${action}`;
 	console.log( 'doing a soundex request: ' + url );
 	const response = await fetch( url, {
-		method: 'POST', // *GET, POST, PUT, DELETE, etc.
-		mode: 'cors', // no-cors, *cors, same-origin
-		headers: {
-			//   'Content-Type': 'application/json'
-			'Content-Type': 'application/x-www-form-urlencoded',
-		},
-		referrerPolicy: 'no-referrer', // no-referrer, *no-referrer-when-downgrade, origin, origin-when-cross-origin, same-origin, strict-origin, strict-origin-when-cross-origin, unsafe-url
-		body: data // body data type must match "Content-Type" header
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify( account )
 	} );
 
 	console.log( 'response from soundex' );
@@ -77,33 +72,33 @@ async function requestSoundex( action : string, account : Account ) : Promise<an
 	return await response.json();
 }
 
-function onElementInserted( containerSelector : string, elementSelector : string, callback:
-	(element: Node) => void ) {
-
-    var onMutationsObserved = function(mutations:MutationRecord[]) {
-        for ( let mutation of mutations ) {
-            if (mutation.addedNodes.length) {
-                var elements = $(mutation.addedNodes).find(elementSelector);
-                for (var i = 0, len = elements.length; i < len; i++) {
-                    callback( elements[i] );
-                }
-            }
-        }
-    };
-
-    var target = $(containerSelector)[0];
-    var config = { childList: true, subtree: true };
-    var MutationObserver = window.MutationObserver;// || window.WebKitMutationObserver;
-    var observer = new MutationObserver(onMutationsObserved);
-    observer.observe(target, config);
+function onElementInserted(
+	containerSelector : string,
+	elementSelector : string,
+	callback: (element: Node) => void )
+{
+	var target = $( containerSelector )[ 0 ];
+	var config = { childList: true, subtree: true };
+	var MutationObserver = window.MutationObserver;
+	var observer = new MutationObserver( function( mutations : MutationRecord[] ) {
+		for ( let mutation of mutations ) {
+			if ( mutation.addedNodes.length ) {
+				var elements = $( mutation.addedNodes ).find( elementSelector );
+				elements.each( function() {
+					callback( this );
+				} );
+			}
+		}
+	} );
+	observer.observe( target, config );
 }
 
-function navigate( forward:boolean, currentHref:string ) {
-	detailedLogging && console.log( 'navigating ' + (forward ? 'forward' : 'backward') );
+function navigate( forward : boolean, currentHref : string ) {
+	detailedLogging && console.log( 'navigating ' + ( forward ? 'forward' : 'backward' ) );
 	$( forward ? '.playControls__next' : '.playControls__prev' ).trigger( 'click' );
 }
 
-$(document).ready(function() {
+$( document ).ready( function() {
 	$( '.playControls__prev' ).on( 'click', function() {
 		usedPrevButton = true;
 		detailedLogging && console.log( 'usedPrevButton = true;' );
@@ -114,7 +109,7 @@ $(document).ready(function() {
 	} );
 } );
 
-onElementInserted('body', '.playbackSoundBadge__titleLink', function(element:Node) {
+onElementInserted( 'body', '.playbackSoundBadge__titleLink', function( element : Node ) {
 
 	if ( !loggedIn ) return;
 
@@ -131,14 +126,23 @@ onElementInserted('body', '.playbackSoundBadge__titleLink', function(element:Nod
 	} );
 } );
 
-async function waitLogInSoundex() {
-	while ( true ) {
-		if ( loggedIn ) return Promise.resolve();
-		await new Promise( resolve => setTimeout(resolve, 1000) );
-	}
+var loginPromise : Promise<any> | null = null;
+
+function waitLogInSoundex() {
+
+	if ( loggedIn ) return true;
+	if ( loginPromise ) return loginPromise;
+	loginPromise = new Promise( function( resolve, reject ) {
+		$( 'body' ).on( 'soundex-login', function() {
+			console.log( 'soundex-login event triggered' );
+			loginPromise = null;
+			resolve( true );
+		} );
+	} );
+	return loginPromise;
 }
 
-onElementInserted('body', '.sc-button-copylink, .compactTrackListItem__plays', async function(element:Node) {
+onElementInserted( 'body', '.sc-button-copylink, .compactTrackListItem__plays', async function( element : Node ) {
 
 	await waitLogInSoundex();
 
@@ -217,18 +221,27 @@ async function loginOrRegister( username : string, passwordHash : string ) {
 			account = result.account;
 			account.passwordHash = passwordHash;
 			loggedIn = true;
+			$( 'body' ).trigger( 'soundex-login' );
+			return 'success';
 		} else {
 			console.log( result.error );
 			loggedIn = false;
+			return result.error;
 		}
 	} catch ( e ) {
-		console.log( 'failed to login or register' );
+		let error = 'failed to login or register';
+		console.log( error );
 		loggedIn = false;
+		return error;
 	}
 }
 
-chrome.runtime.onMessage.addListener( async ( message, sender, sendResponse ) => {
+chrome.runtime.onMessage.addListener( ( message, sender, sendResponse ) => {
 
-	loginOrRegister( message.username as string, calculatePasswordHash( message.password ) );
-	sendResponse( 'success' );
+	loginOrRegister( message.username as string, calculatePasswordHash( message.password ) )
+		.then( function( resultString ) {
+			sendResponse( resultString );
+		} );
+
+	return true;
 } );
