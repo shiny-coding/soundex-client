@@ -1,5 +1,6 @@
 const path = require("path");
 const CopyPlugin = require("copy-webpack-plugin");
+const Dotenv = require('dotenv-webpack');
 
 module.exports = {
 	entry: {
@@ -40,5 +41,6 @@ module.exports = {
 				{ from: "public", to: path.resolve(__dirname, "..", "extension") }
 			],
 		}),
+		new Dotenv(),
 	]
 };

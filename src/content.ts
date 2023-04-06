@@ -3,7 +3,8 @@ import $ from "jquery";
 import Account from "./model";
 import { localStorageUsernameId, localStoragePasswordHashId, localStorageHiddenTracksId } from "./shared";
 
-const soundexServerHost = 'https://soundex.herokuapp.com';
+const soundexServerHost = process.env.SOUNDEX_SERVER_URL ?? "https://soundex.miracall.net";
+const useLocalStorage = process.env.USE_LOCAL_STORAGE == "true" || process.env.USE_LOCAL_STORAGE == "1";
 
 var usedPrevButton = false;
 
@@ -15,7 +16,6 @@ var account : Account = {
 
 var loggedIn = false;
 var detailedLogging = false;
-var useLocalStorage = false;
 
 if ( account.username ) {
 	loginOrRegister( account.username, account.passwordHash );
