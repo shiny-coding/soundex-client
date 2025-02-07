@@ -158,7 +158,7 @@ onElementInserted( 'body', '.sc-button-copylink, .compactTrackListItem__plays', 
 		hide( element );
 	}
 	if ( !$element.next().is( '.sc-button-hide' ) ) {
-		let $button = $( `<button type="button" class="sc-button-hide sc-button-secondary sc-button sc-button-small sc-button-responsive" aria-describedby="tooltip-566" tabindex="0" title="Hide" aria-label="Hide">Hide</button>` );
+		let $button = $( `<button type="button" class="sc-button-hide sc-button-secondary sc-button sc-button-small sc-button-responsive" aria-describedby="tooltip-566" tabindex="0" title="Hide" aria-label="Hide" style="font-size: 10px;">Hide</button>` );
 		if ( $element.is( '.compactTrackListItem__plays' ) ) {
 			$button.css( 'margin-left', '0.5rem' );
 		}
